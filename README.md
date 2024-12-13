@@ -1,5 +1,7 @@
 # ArenMy
+
 **Author:** Jimmy Luong
+
 ArenMy is a chess application that allows you to play against UCI-compatible chess engines. The project features a graphical interface to visualize the board, interact with the game, and evaluate positions using chess engines. It also supports adding custom engines for personalized experiences.
 
 ## Features
