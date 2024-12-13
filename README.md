@@ -1,5 +1,5 @@
 # ArenMy
-
+**Author:** Jimmy Luong
 ArenMy is a chess application that allows you to play against UCI-compatible chess engines. The project features a graphical interface to visualize the board, interact with the game, and evaluate positions using chess engines. It also supports adding custom engines for personalized experiences.
 
 ## Features
@@ -26,8 +26,9 @@ pip install chess pillow pyyaml
 ## Usage
 
 1. **Running the Game**: To start the game, execute the main script.
-
+```bash
 python main.py
+```
 
 2. **Add Engines**: To add a chess engine, click the "Add Engines" button. Choose the engine's UCI executable and provide a name for it. The engine will be saved and available for selection.
 
@@ -52,6 +53,18 @@ python main.py
 ## Contributing
 
 Feel free to fork the repository and create pull requests for any features or fixes you'd like to contribute.
+
+## External Link(s)
+
+Example for the opponents engine:
+```bash
+https://github.com/github-jimjim/Pynfish
+```
+
+Example for the evaluate engine:
+```bash
+https://github.com/official-stockfish/Stockfish
+```
 
 ## License
 
