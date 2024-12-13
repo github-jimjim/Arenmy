@@ -6,7 +6,6 @@ import yaml
 from PIL import Image, ImageTk
 import os
 
-# Funktion, um Schachbrett zu zeichnen
 def draw_board(canvas, board, piece_images, last_move=None, scale=1.0):
     canvas.delete("all")
     square_size = int(60 * scale)
@@ -20,9 +19,8 @@ def draw_board(canvas, board, piece_images, last_move=None, scale=1.0):
             x2 = x1 + square_size
             y2 = y1 + square_size
 
-            # Markiere die Felder des letzten Zugs
             if last_move and chess.square(file, rank) in [last_move.from_square, last_move.to_square]:
-                color = "#f6f669"  # Gelb für Markierung
+                color = "#f6f669"
             else:
                 color = "#f0d9b5" if (rank + file) % 2 == 0 else "#b58863"
 
@@ -35,33 +33,28 @@ def draw_board(canvas, board, piece_images, last_move=None, scale=1.0):
                     resized_image = piece_image.resize((square_size, square_size))
                     tk_image = ImageTk.PhotoImage(resized_image)
                     canvas.create_image(x1, y1, anchor=tk.NW, image=tk_image)
-                    canvas_images.append(tk_image)  # Speichere die Bildreferenz
+                    canvas_images.append(tk_image)
 
-    canvas.images = canvas_images  # Verhindert das Löschen der Bilder
+    canvas.images = canvas_images
 
-# Funktion, um die Evaluationsleiste zu aktualisieren
 def update_eval_bar(eval_bar, eval_value, scale=1.0):
     eval_bar.delete("all")
-    bar_width = int(12.5 * scale)  # 50 % dünner
+    bar_width = int(12.5 * scale)
     bar_height = int(400 * scale)
     eval_height = max(min(int((eval_value + 10) / 20 * bar_height), bar_height), 0)
 
-    # Zeichne die Bewertung (weiß oben, schwarz unten)
     eval_bar.create_rectangle(0, bar_height - eval_height, bar_width, bar_height, fill="white", outline="black")
     eval_bar.create_rectangle(0, 0, bar_width, bar_height - eval_height, fill="black", outline="black")
 
-# Funktion, um Engines hinzuzufügen
 def add_engines():
     engines_file = "engines.yml"
 
-    # Lade vorhandene Engines
     if os.path.exists(engines_file):
         with open(engines_file, "r") as file:
             engines = yaml.safe_load(file) or {}
     else:
         engines = {}
 
-    # Engine auswählen
     engine_path = filedialog.askopenfilename(title="Wähle eine Engine aus")
     if engine_path:
         engine_name = simpledialog.askstring("Engine Name", "Gib einen Namen für die Engine ein:")
@@ -70,7 +63,6 @@ def add_engines():
             with open(engines_file, "w") as file:
                 yaml.safe_dump(engines, file)
 
-# Funktion, um sicherzustellen, dass Engines hinzugefügt werden, falls keine vorhanden sind
 def ensure_engines():
     engines_file = "engines.yml"
     if not os.path.exists(engines_file):
@@ -84,18 +76,16 @@ def ensure_engines():
         tk.messagebox.showinfo("Keine Engines gefunden", "Bitte füge mindestens eine Engine hinzu.")
         add_engines()
 
-# Hauptprogramm
 def main():
-    # GUI erstellen
     root = tk.Tk()
     root.title("Schachbrett mit UCI-Engine")
 
-    ensure_engines()  # Sicherstellen, dass Engines existieren
+    ensure_engines()
 
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
     max_scale = min(screen_width / 480, screen_height / 480)
-    scale = 1.0  # Standard-Skalierungsfaktor
+    scale = 1.0 
 
     canvas = tk.Canvas(root, width=int(480 * scale), height=int(480 * scale))
     canvas.grid(row=1, column=0)
@@ -103,7 +93,6 @@ def main():
     eval_bar = tk.Canvas(root, width=int(12.5 * scale), height=int(400 * scale), bg="gray")
     eval_bar.grid(row=1, column=1)
 
-    # Schachfigurenbilder laden
     piece_images = {}
     asset_folder = "assets"
     piece_files = {
@@ -119,11 +108,9 @@ def main():
     selected_square = None
     last_move = None
 
-    # Dropdown-Menüs für Engine-Auswahl
     engine_var = tk.StringVar(value="Keine Engine")
     eval_engine_var = tk.StringVar(value="Keine Bewertungs-Engine")
 
-    # Lade Engines aus engines.yml
     engines_file = "engines.yml"
     with open(engines_file, "r") as file:
         engines = yaml.safe_load(file) or {}
@@ -157,24 +144,22 @@ def main():
             clicked_square = chess.square(file, rank)
 
             if selected_square is None:
-                # Wähle die Figur aus
                 if board.piece_at(clicked_square) and board.color_at(clicked_square) == board.turn:
                     selected_square = clicked_square
             else:
-                # Versuche, den Zug auszuführen
                 move = chess.Move(selected_square, clicked_square)
                 if move in board.legal_moves:
                     board.push(move)
                     last_move = move
                     draw_board(canvas, board, piece_images, last_move, scale)
                     update_evaluation()
-                    root.after(100, make_engine_move)  # Engine-Zug verzögern, um Animation zu erlauben
+                    root.after(100, make_engine_move)
                 selected_square = None
 
         def make_engine_move():
             nonlocal last_move
             if not board.is_game_over():
-                result = engine.play(board, chess.engine.Limit(time=1.0))  # Zeitlimit für die Engine
+                result = engine.play(board, chess.engine.Limit(time=1.0))
                 board.push(result.move)
                 last_move = result.move
                 draw_board(canvas, board, piece_images, last_move, scale)
@@ -183,12 +168,12 @@ def main():
         def update_evaluation():
             if not board.is_game_over():
                 info = eval_engine.analyse(board, chess.engine.Limit(time=0.5))
-                score = info["score"].white().score(mate_score=10000) / 100.0  # Skaliere auf -10 bis 10
+                score = info["score"].white().score(mate_score=10000) / 100.0
                 update_eval_bar(eval_bar, score, scale)
 
         def on_scale_change(val):
             nonlocal scale
-            scale = min(float(val), max_scale)  # Begrenze die Skalierung auf die Bildschirmgröße
+            scale = min(float(val), max_scale)
             canvas.config(width=int(480 * scale), height=int(480 * scale))
             eval_bar.config(width=int(12.5 * scale), height=int(400 * scale))
             draw_board(canvas, board, piece_images, last_move, scale)
