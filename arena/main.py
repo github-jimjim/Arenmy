@@ -10,7 +10,7 @@ def draw_board(canvas, board, piece_images, last_move=None, scale=1.0):
     canvas.delete("all")
     square_size = int(60 * scale)
 
-    canvas_images = []  # Lokale Liste, um Bildreferenzen zu speichern
+    canvas_images = []
 
     for rank in range(8):
         for file in range(8):
