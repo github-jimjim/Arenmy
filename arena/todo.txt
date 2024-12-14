@@ -3,7 +3,6 @@
 - set timer
 - save games in pgn format
 - select think time over the gui
-- make sounds in there
 - make a analyzer with elo rating
 - give up button
 - decide which side
