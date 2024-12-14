@@ -59,15 +59,9 @@ Feel free to fork the repository and create pull requests for any features or fi
 
 ## External Link(s)
 
-Example for the opponents engine:
-```bash
-https://github.com/github-jimjim/Pynfish
-```
+[Example for the opponents engine](https://github.com/github-jimjim/Pynfish)
 
-Example for the evaluate engine:
-```bash
-https://github.com/official-stockfish/Stockfish
-```
+[Example for the evaluate engine](https://github.com/official-stockfish/Stockfish)
 
 ## License
 
