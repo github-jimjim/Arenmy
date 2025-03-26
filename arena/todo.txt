@@ -1,8 +1,0 @@
-- choose the engines in the gui >> evaluate engine and opponent 
-- make hints with the evaluate engine
-- set timer
-- save games in pgn format
-- select think time over the gui
-- make a analyzer with elo rating
-- give up button
-- decide which side
