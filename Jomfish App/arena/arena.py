@@ -1,6 +1,9 @@
 import os
 import sys, json, time, itertools, re, concurrent.futures
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QComboBox, QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView, QListWidget, QListWidgetItem, QAbstractItemView, QSpinBox, QInputDialog
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, 
+                             QFormLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QComboBox, QFileDialog, 
+                             QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView, QListWidget, QListWidgetItem, 
+                             QAbstractItemView, QSpinBox, QInputDialog, QGroupBox)
 from PyQt5.QtCore import QProcess, QThread, pyqtSignal, Qt
 import chess, chess.pgn
 
@@ -13,7 +16,8 @@ def ensureConfigDir():
     os.makedirs(d, exist_ok=True)
     if not os.path.exists(path_engine):
         fixed_engine_path = os.path.join(os.getcwd(), "jomfish_none.exe")
-        engine_list = [{"name": "Jomfish 10", "command": fixed_engine_path, "protocol": "uci", "workingDirectory": os.path.dirname(fixed_engine_path), "initStrings": []}]
+        engine_list = [{"name": "Jomfish 10", "command": fixed_engine_path, "protocol": "uci", 
+                        "workingDirectory": os.path.dirname(fixed_engine_path), "initStrings": []}]
         with open(path_engine, "w") as f:
             json.dump(engine_list, f, indent=4)
     return path_engine
@@ -171,11 +175,14 @@ class EngineConfigTab(QWidget):
         self.loadOptionsButton.clicked.connect(self.loadUCIOptions)
         self.loadSavedButton = QPushButton("Load Saved Engine")
         self.loadSavedButton.clicked.connect(self.loadSavedEngine)
+        self.removeEngineButton = QPushButton("Remove Engine")
+        self.removeEngineButton.clicked.connect(self.removeEngine)
         btn_layout.addWidget(self.loadOptionsButton)
         btn_layout.addWidget(self.loadSavedButton)
+        btn_layout.addWidget(self.removeEngineButton)
         layout.addLayout(btn_layout)
         self.optionsTable = QTableWidget(0,5)
-        self.optionsTable.setHorizontalHeaderLabels(["Name","Type","Default","Min/Max","Value"])
+        self.optionsTable.setHorizontalHeaderLabels(["Name", "Type", "Default", "Min/Max", "Value"])
         header = self.optionsTable.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.optionsTable)
@@ -183,6 +190,14 @@ class EngineConfigTab(QWidget):
         self.addButton.clicked.connect(self.addEngine)
         layout.addWidget(self.addButton)
         self.setLayout(layout)
+        self.setStyleSheet("""
+            QWidget { font-family: 'Segoe UI'; font-size: 12pt; }
+            QPushButton { background-color: #5A9; color: white; border-radius: 4px; padding: 8px 12px; }
+            QPushButton:hover { background-color: #7CB; }
+            QLineEdit, QComboBox, QTextEdit, QTableWidget { background-color: #FFF; border: 1px solid #CCC; border-radius: 4px; padding: 4px; }
+            QGroupBox { font-weight: bold; border: 1px solid #AAA; border-radius: 4px; margin-top: 10px; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px 0 3px; }
+        """)
     def browseEngine(self):
         path, _ = QFileDialog.getOpenFileName(self, "Select Engine", "", "Executable Files (*)")
         if path:
@@ -211,8 +226,7 @@ class EngineConfigTab(QWidget):
             self.optionsTable.setItem(row, 2, QTableWidgetItem(opt["default"]))
             minmax = f"{opt['min']}/{opt['max']}" if opt["min"] and opt["max"] else ""
             self.optionsTable.setItem(row, 3, QTableWidgetItem(minmax))
-            wert_item = QTableWidgetItem(opt["default"])
-            self.optionsTable.setItem(row, 4, wert_item)
+            self.optionsTable.setItem(row, 4, QTableWidgetItem(opt["default"]))
     def getInitStrings(self):
         init_strings = []
         for row in range(self.optionsTable.rowCount()):
@@ -225,7 +239,9 @@ class EngineConfigTab(QWidget):
         if not self.engineNameEdit.text() or not self.commandEdit.text():
             QMessageBox.warning(self, "Error", "Please specify both engine name and command!")
             return
-        engine = {"name": self.engineNameEdit.text(), "command": self.commandEdit.text(), "protocol": self.protocolCombo.currentText(), "workingDirectory": self.workingDirEdit.text(), "initStrings": self.getInitStrings()}
+        engine = {"name": self.engineNameEdit.text(), "command": self.commandEdit.text(), 
+                  "protocol": self.protocolCombo.currentText(), "workingDirectory": self.workingDirEdit.text(), 
+                  "initStrings": self.getInitStrings()}
         path = ensureConfigDir()
         engines = []
         if os.path.exists(path):
@@ -262,9 +278,46 @@ class EngineConfigTab(QWidget):
                     self.commandEdit.setText(e["command"])
                     self.protocolCombo.setCurrentText(e["protocol"])
                     self.workingDirEdit.setText(e["workingDirectory"])
-                    self.options = []
                     self.optionsTable.setRowCount(0)
+                    if "initStrings" in e and e["initStrings"]:
+                        for init in e["initStrings"]:
+                            parts = init.split(" value ")
+                            if len(parts) == 2:
+                                opt_name = parts[0].replace("setoption name ", "").strip()
+                                opt_value = parts[1].strip()
+                                row = self.optionsTable.rowCount()
+                                self.optionsTable.insertRow(row)
+                                self.optionsTable.setItem(row, 0, QTableWidgetItem(opt_name))
+                                self.optionsTable.setItem(row, 1, QTableWidgetItem(""))
+                                self.optionsTable.setItem(row, 2, QTableWidgetItem(""))
+                                self.optionsTable.setItem(row, 3, QTableWidgetItem(""))
+                                self.optionsTable.setItem(row, 4, QTableWidgetItem(opt_value))
                     return
+    def removeEngine(self):
+        path = ensureConfigDir()
+        if not os.path.exists(path):
+            QMessageBox.information(self, "Info", "No saved engines found.")
+            return
+        try:
+            with open(path, "r") as f:
+                engines = json.load(f)
+        except Exception:
+            QMessageBox.warning(self, "Error", "Error loading saved engines.")
+            return
+        items = [e["name"] for e in engines]
+        if not items:
+            QMessageBox.information(self, "Info", "No saved engines found.")
+            return
+        item, ok = QInputDialog.getItem(self, "Remove Engine", "Select Engine to remove:", items, 0, False)
+        if ok and item:
+            engines = [e for e in engines if e["name"] != item]
+            with open(path, "w") as f:
+                json.dump(engines, f, indent=4)
+            QMessageBox.information(self, "Success", f"Engine '{item}' has been removed!")
+            self.engineNameEdit.clear()
+            self.commandEdit.clear()
+            self.workingDirEdit.clear()
+            self.optionsTable.setRowCount(0)
 
 class TournamentThread(QThread):
     tournamentLog = pyqtSignal(str)
@@ -383,12 +436,15 @@ class TournamentTab(QWidget):
         self.loadEngineList()
     def initUI(self):
         main_layout = QVBoxLayout()
-        hlayout = QHBoxLayout()
+        top_layout = QHBoxLayout()
         self.engineListWidget = QListWidget()
         self.engineListWidget.setSelectionMode(QAbstractItemView.MultiSelection)
-        hlayout.addWidget(QLabel("Available Engines:"))
-        hlayout.addWidget(self.engineListWidget)
-        main_layout.addLayout(hlayout)
+        top_layout.addWidget(QLabel("Available Engines:"))
+        top_layout.addWidget(self.engineListWidget)
+        self.refreshButton = QPushButton("Refresh")
+        self.refreshButton.clicked.connect(self.loadEngineList)
+        top_layout.addWidget(self.refreshButton)
+        main_layout.addLayout(top_layout)
         debug_layout = QHBoxLayout()
         self.tournamentLog = QTextEdit()
         self.tournamentLog.setReadOnly(True)
@@ -434,6 +490,15 @@ class TournamentTab(QWidget):
         self.savePGNButton.clicked.connect(self.savePGN)
         main_layout.addWidget(self.savePGNButton)
         self.setLayout(main_layout)
+        self.setStyleSheet("""
+            QWidget { font-family: 'Segoe UI'; font-size: 11pt; }
+            QPushButton { background-color: #008CBA; color: white; border-radius: 4px; padding: 6px 10px; }
+            QPushButton:hover { background-color: #00A0DC; }
+            QLineEdit, QComboBox, QTextEdit, QTableWidget, QListWidget { background-color: #FFF; border: 1px solid #DDD; border-radius: 4px; padding: 4px; }
+            QLabel { color: #333; }
+            QGroupBox { font-weight: bold; border: 1px solid #AAA; border-radius: 4px; margin-top: 10px; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }
+        """)
     def loadEngineList(self):
         path = getConfigPath()
         self.engines = []
@@ -505,19 +570,24 @@ class PlayGameTab(QWidget):
         self.game = chess.pgn.Game()
         self.node = self.game
         self.engineName = ""
+        self.engines = []
         self.initUI()
+        self.loadEngines()
     def initUI(self):
-        layout = QVBoxLayout()
+        main_layout = QVBoxLayout()
         header_layout = QHBoxLayout()
         self.playerLabel = QLabel("Human (White)")
         self.engineLabel = QLabel("Engine: [not selected] (Black)")
         header_layout.addWidget(self.playerLabel)
         header_layout.addWidget(self.engineLabel)
-        layout.addLayout(header_layout)
+        main_layout.addLayout(header_layout)
+        board_group = QGroupBox("Live Board")
+        board_layout = QVBoxLayout()
         self.boardArea = QTextEdit()
         self.boardArea.setReadOnly(True)
-        layout.addWidget(QLabel("Board (ASCII, Live):"))
-        layout.addWidget(self.boardArea, stretch=3)
+        board_layout.addWidget(self.boardArea)
+        board_group.setLayout(board_layout)
+        main_layout.addWidget(board_group)
         control_layout = QHBoxLayout()
         self.moveInput = QLineEdit()
         self.moveInput.setPlaceholderText("Your move (e.g. e2e4)")
@@ -525,30 +595,76 @@ class PlayGameTab(QWidget):
         self.moveButton.clicked.connect(self.humanMove)
         control_layout.addWidget(self.moveInput)
         control_layout.addWidget(self.moveButton)
-        layout.addLayout(control_layout)
+        main_layout.addLayout(control_layout)
         self.gameLog = QTextEdit()
         self.gameLog.setReadOnly(True)
-        layout.addWidget(QLabel("Game Log:"))
-        layout.addWidget(self.gameLog, stretch=1)
+        main_layout.addWidget(QLabel("Game Log:"))
+        main_layout.addWidget(self.gameLog)
+        debug_group = QGroupBox("Engine Debug Info")
+        debug_layout = QHBoxLayout()
+        self.engineDebug = QLineEdit()
+        self.engineDebug.setReadOnly(True)
+        self.engineDebug.setPlaceholderText("Engine debug info will appear here...")
+        debug_layout.addWidget(self.engineDebug)
+        debug_group.setLayout(debug_layout)
+        main_layout.addWidget(debug_group)
+        top_layout = QHBoxLayout()
+        self.selectEngineButton = QPushButton("Select Engine")
+        self.selectEngineButton.clicked.connect(self.selectEngine)
+        self.refreshEnginesButton = QPushButton("Refresh")
+        self.refreshEnginesButton.clicked.connect(self.loadEngines)
+        top_layout.addWidget(self.selectEngineButton)
+        top_layout.addWidget(self.refreshEnginesButton)
+        main_layout.addLayout(top_layout)
         self.savePGNButton = QPushButton("Save PGN")
         self.savePGNButton.clicked.connect(self.savePGN)
-        layout.addWidget(self.savePGNButton)
-        self.setLayout(layout)
+        main_layout.addWidget(self.savePGNButton)
+        self.setLayout(main_layout)
+        self.setStyleSheet("""
+            QGroupBox { font-weight: bold; border: 1px solid #888; border-radius: 4px; margin-top: 10px; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }
+            QPushButton { background-color: #E91E63; color: white; border-radius: 4px; padding: 6px 10px; }
+            QPushButton:hover { background-color: #EC407A; }
+            QLineEdit, QTextEdit, QComboBox { background-color: #FFF; border: 1px solid #CCC; border-radius: 4px; padding: 4px; }
+            QLabel { color: #333; }
+        """)
         self.updateBoardDisplay()
+    def loadEngines(self):
+        path = getConfigPath()
+        self.engines = []
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    self.engines = json.load(f)
+            except Exception:
+                QMessageBox.warning(self, "Error", "Error loading engines.json")
+        else:
+            QMessageBox.information(self, "Info", "No engines.json found.")
     def updateBoardDisplay(self):
         state = self.board.unicode(borders=True)
         self.boardArea.setPlainText(state + f"\n\nWhite: Human | Black: {self.engineName if self.engineName else '[not selected]'}")
-    def chooseEngine(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select Engine", "", "Executable Files (*)")
-        if path:
-            self.engineName = os.path.basename(path)
-            self.engineLabel.setText(f"Engine: {self.engineName} (Black)")
-            self.engine = UCIEngine(path, os.path.dirname(path), False, 0, 0, color=chess.BLACK)
-    def startGame(self):
-        self.chooseEngine()
-        if not self.engine:
-            QMessageBox.warning(self, "Error", "No engine selected!")
+    def selectEngine(self):
+        self.loadEngines()
+        if not self.engines:
+            QMessageBox.information(self, "Info", "No engines available!")
             return
+        items = [e["name"] for e in self.engines]
+        item, ok = QInputDialog.getItem(self, "Select Engine", "Available Engines:", items, 0, False)
+        if ok and item:
+            for e in self.engines:
+                if e["name"] == item:
+                    self.engineName = e["name"]
+                    self.engineLabel.setText(f"Engine: {self.engineName} (Black)")
+                    self.engine = UCIEngine(e["command"], e.get("workingDirectory", ""), False, 0, 0, color=chess.BLACK)
+                    for cmd in e.get("initStrings", []):
+                        self.engine.sendCommand(cmd)
+                    break
+    def startGame(self):
+        if not self.engine:
+            self.selectEngine()
+            if not self.engine:
+                QMessageBox.warning(self, "Error", "No engine selected!")
+                return
         self.engine.sendCommand("uci")
         self.engine.sendCommand("isready")
         self.board.reset()
@@ -588,6 +704,7 @@ class PlayGameTab(QWidget):
                     self.node = self.node.add_variation(engine_move)
                     self.updateBoardDisplay()
                     self.gameLog.append(f"Engine: {engine_move.uci()}")
+                    self.engineDebug.setText(info_details if info_details else "No debug info")
                 except Exception:
                     self.gameLog.append("Error in engine move.")
             else:
@@ -603,13 +720,13 @@ class PlayGameTab(QWidget):
             with open(path, "w") as f:
                 f.write(pgn_text)
             QMessageBox.information(self, "Success", "PGN saved!")
-
+            
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         ensureConfigDir()
         self.setWindowTitle("Custom UCI Engine Manager, Tournament & Game")
-        self.resize(1200,900)
+        self.resize(1200, 900)
         tabs = QTabWidget()
         tabs.addTab(EngineConfigTab(), "Engine Configuration")
         tabs.addTab(TournamentTab(), "Tournament")
@@ -623,8 +740,9 @@ class MainWindow(QMainWindow):
         play_container.setLayout(play_layout)
         tabs.addTab(play_container, "Game")
         self.setCentralWidget(tabs)
-
-if __name__=="__main__":
+        self.setStyleSheet("QMainWindow { background-color: #ECEFF1; }")
+        
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
