@@ -7,11 +7,10 @@ Small TODO list for the next update (first version)
 - [X] Fix layout
 - [X] Fix Time Control (was lazy AF so just changed to time per move)
 
-Small TODO list for the v.0.2.0
+Small TODO list for the v.0.2.0: (eta. deadline: 27.4.2025; I have no time rn)
 - [ ] A better GUI for nicer gameplay
 - [ ] Maybe bring back OG-TC if I have enought time (low priority
 - [ ] Add sounds
 - [ ] Watch replay from PGN
 - [ ] Make better Setup.iss
-
 
