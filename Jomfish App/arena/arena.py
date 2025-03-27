@@ -1,35 +1,22 @@
 import os
-import sys, os, json, re, time, itertools, concurrent.futures
+import sys, json, time, itertools, re, concurrent.futures
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QComboBox, QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView, QListWidget, QListWidgetItem, QAbstractItemView, QSpinBox, QInputDialog
-from PyQt5.QtCore import QProcess, QThread, pyqtSignal, QTimer, Qt
+from PyQt5.QtCore import QProcess, QThread, pyqtSignal, Qt
 import chess, chess.pgn
 
-import os
-import json
-
 def getConfigPath():
-    return os.path.join(os.getenv("APPDATA"), "Jomfish", "config.json")  
+    return os.path.join(os.getenv("APPDATA"), "Jomfish", "config.json")
 
 def ensureConfigDir():
-    path_engine = getConfigPath() 
-    d = os.path.dirname(path_engine)  
-
+    path_engine = getConfigPath()
+    d = os.path.dirname(path_engine)
     os.makedirs(d, exist_ok=True)
     if not os.path.exists(path_engine):
-        fixed_engine_path = os.path.join(os.getcwd(), "jomfish_none.exe")  
-        engine_list = [{
-            "name": "Jomfish 10",
-            "command": fixed_engine_path,
-            "protocol": "uci",
-            "workingDirectory": os.path.dirname(fixed_engine_path),
-            "initStrings": []
-        }]
-        with open(path_engine, "w") as f:  
+        fixed_engine_path = os.path.join(os.getcwd(), "jomfish_none.exe")
+        engine_list = [{"name": "Jomfish 10", "command": fixed_engine_path, "protocol": "uci", "workingDirectory": os.path.dirname(fixed_engine_path), "initStrings": []}]
+        with open(path_engine, "w") as f:
             json.dump(engine_list, f, indent=4)
-
-    return path_engine 
-
-
+    return path_engine
 
 class UCIEngineParser:
     def __init__(self, command, working_dir=""):
@@ -75,12 +62,13 @@ class UCIEngineParser:
                 self.options.append(opt)
 
 class UCIEngine:
-    def __init__(self, command, working_dir="", use_wtime=False, wtime=1000, inc=0):
+    def __init__(self, command, working_dir="", use_wtime=False, time_left=1000, inc=0, color=chess.WHITE):
         self.command = command
         self.working_dir = working_dir
         self.use_wtime = use_wtime
-        self.wtime = wtime
+        self.time_left = time_left
         self.inc = inc
+        self.color = color
         self.process = QProcess()
         if working_dir:
             self.process.setWorkingDirectory(working_dir)
@@ -95,7 +83,10 @@ class UCIEngine:
             self.process.write((cmd+"\n").encode())
     def waitForBestmove(self, max_time_ms):
         if self.use_wtime:
-            self.sendCommand(f"go wtime {int(self.wtime*1000)} inc {int(self.inc*1000)}")
+            if self.color == chess.WHITE:
+                self.sendCommand(f"go wtime {int(self.time_left*1000)} winc {int(self.inc*1000)}")
+            else:
+                self.sendCommand(f"go btime {int(self.time_left*1000)} binc {int(self.inc*1000)}")
         else:
             self.sendCommand(f"go movetime {max_time_ms}")
         buffer = ""
@@ -109,36 +100,43 @@ class UCIEngine:
                 m = re.search(r"bestmove\s+(\S+)", buffer)
                 if m:
                     bestmove = m.group(1)
-                    pattern = (r"info(?:\s+\S+)*\s+depth\s+(?P<depth>\d+)"
-                               r"(?:\s+seldepth\s+(?P<seldepth>\d+))?"
-                               r"(?:\s+multipv\s+(?P<multipv>\d+))?"
-                               r"\s+score\s+(?P<score_type>cp|mate)\s+(?P<score>-?\d+)"
-                               r"(?:\s+nodes\s+(?P<nodes>\d+))?"
-                               r"(?:\s+nps\s+(?P<nps>\d+))?"
-                               r"(?:\s+tbhits\s+(?P<tbhits>\d+))?"
-                               r"\s+time\s+(?P<time>\d+)")
-                    info_match = re.search(pattern, buffer)
-                    if info_match:
-                        parts = []
-                        if info_match.group("depth"):
-                            parts.append(f"Depth: {info_match.group('depth')}")
-                        if info_match.group("seldepth"):
-                            parts.append(f"Seldepth: {info_match.group('seldepth')}")
-                        if info_match.group("multipv"):
-                            parts.append(f"MultiPV: {info_match.group('multipv')}")
-                        if info_match.group("score") and info_match.group("score_type"):
-                            parts.append(f"Score: {info_match.group('score')} {info_match.group('score_type')}")
-                        if info_match.group("nodes"):
-                            parts.append(f"Nodes: {info_match.group('nodes')}")
-                        if info_match.group("nps"):
-                            parts.append(f"NPS: {info_match.group('nps')}")
-                        if info_match.group("tbhits"):
-                            parts.append(f"TBHits: {info_match.group('tbhits')}")
-                        if info_match.group("time"):
-                            parts.append(f"Time: {info_match.group('time')}ms")
-                        info_details = " | ".join(parts)
+                    info_dict = {}
+                    for line in buffer.splitlines():
+                        if line.startswith("info"):
+                            tokens = line.split()
+                            i = 0
+                            while i < len(tokens):
+                                if tokens[i] == "depth" and i+1 < len(tokens):
+                                    info_dict["Depth"] = tokens[i+1]
+                                    i += 2
+                                elif tokens[i] == "seldepth" and i+1 < len(tokens):
+                                    info_dict["Seldepth"] = tokens[i+1]
+                                    i += 2
+                                elif tokens[i] == "multipv" and i+1 < len(tokens):
+                                    info_dict["MultiPV"] = tokens[i+1]
+                                    i += 2
+                                elif tokens[i] == "score" and i+2 < len(tokens):
+                                    info_dict["Score"] = tokens[i+2] + " " + tokens[i+1]
+                                    i += 3
+                                elif tokens[i] == "nodes" and i+1 < len(tokens):
+                                    info_dict["Nodes"] = tokens[i+1]
+                                    i += 2
+                                elif tokens[i] == "nps" and i+1 < len(tokens):
+                                    info_dict["NPS"] = tokens[i+1]
+                                    i += 2
+                                elif tokens[i] == "tbhits" and i+1 < len(tokens):
+                                    info_dict["TBHits"] = tokens[i+1]
+                                    i += 2
+                                elif tokens[i] == "time" and i+1 < len(tokens):
+                                    info_dict["Time"] = tokens[i+1] + "ms"
+                                    i += 2
+                                else:
+                                    i += 1
+                    order = ["Depth", "Seldepth", "MultiPV", "Score", "Nodes", "NPS", "TBHits", "Time"]
+                    parts = [f"{key}: {info_dict[key]}" for key in order if key in info_dict]
+                    info_details = " | ".join(parts)
                     break
-        return bestmove, info_details
+        return bestmove, info_details, buffer
     def quit(self):
         self.sendCommand("quit")
         self.process.terminate()
@@ -227,11 +225,7 @@ class EngineConfigTab(QWidget):
         if not self.engineNameEdit.text() or not self.commandEdit.text():
             QMessageBox.warning(self, "Error", "Please specify both engine name and command!")
             return
-        engine = {"name": self.engineNameEdit.text(),
-                  "command": self.commandEdit.text(),
-                  "protocol": self.protocolCombo.currentText(),
-                  "workingDirectory": self.workingDirEdit.text(),
-                  "initStrings": self.getInitStrings()}
+        engine = {"name": self.engineNameEdit.text(), "command": self.commandEdit.text(), "protocol": self.protocolCombo.currentText(), "workingDirectory": self.workingDirEdit.text(), "initStrings": self.getInitStrings()}
         path = ensureConfigDir()
         engines = []
         if os.path.exists(path):
@@ -277,17 +271,16 @@ class TournamentThread(QThread):
     tournamentBoard = pyqtSignal(str)
     tournamentEngineInfoWhite = pyqtSignal(str)
     tournamentEngineInfoBlack = pyqtSignal(str)
+    tournamentEngineRaw = pyqtSignal(str)
     tournamentPGN = pyqtSignal(str)
     tournamentFinished = pyqtSignal(str)
-    def __init__(self, engines, start_time, increment, bonus_after, rounds, concurrency, use_wtime=False):
+    def __init__(self, engines, movetime, rounds, concurrency, use_movetime=True):
         super().__init__()
         self.engines = engines
-        self.start_time = start_time
-        self.increment = increment
-        self.bonus_after = bonus_after
+        self.movetime = movetime
         self.rounds = rounds
         self.concurrency = concurrency
-        self.use_wtime = use_wtime
+        self.use_movetime = use_movetime
     def run(self):
         overall_log = ""
         results = {}
@@ -336,10 +329,8 @@ class TournamentThread(QThread):
         node = game
         game_log = ""
         move_count = 0
-        clocks = {chess.WHITE: self.start_time, chess.BLACK: self.start_time}
-        moves_played = {chess.WHITE: 0, chess.BLACK: 0}
-        white_engine = UCIEngine(white_config["command"], white_config.get("workingDirectory", ""), self.use_wtime, clocks[chess.WHITE], self.increment)
-        black_engine = UCIEngine(black_config["command"], black_config.get("workingDirectory", ""), self.use_wtime, clocks[chess.BLACK], self.increment)
+        white_engine = UCIEngine(white_config["command"], white_config.get("workingDirectory", ""), False, 0, 0, color=chess.WHITE)
+        black_engine = UCIEngine(black_config["command"], black_config.get("workingDirectory", ""), False, 0, 0, color=chess.BLACK)
         for cmd in white_config.get("initStrings", []):
             white_engine.sendCommand(cmd)
         for cmd in black_config.get("initStrings", []):
@@ -348,22 +339,11 @@ class TournamentThread(QThread):
         while not board.is_game_over() and move_count < 200:
             current_color = board.turn
             current_engine = white_engine if current_color==chess.WHITE else black_engine
-            available_time_ms = int(clocks[current_color]*1000)
-            start = time.time()
+            available_time_ms = int(self.movetime * 1000)
             current_engine.sendCommand("position fen " + board.fen())
-            bestmove, info_details = current_engine.waitForBestmove(available_time_ms)
-            elapsed = time.time()-start
-            clocks[current_color] -= elapsed
-            clocks[current_color] += self.increment
-            moves_played[current_color] += 1
-            if moves_played[current_color] % self.bonus_after == 0:
-                clocks[current_color] += self.start_time
-            if clocks[current_color] <= 0:
-                game_log += f"{'White' if current_color==chess.WHITE else 'Black'} ran out of time.\n"
-                result = "0-1" if current_color==chess.WHITE else "1-0"
-                white_engine.quit()
-                black_engine.quit()
-                break
+            bestmove, info_details, raw_output = current_engine.waitForBestmove(available_time_ms)
+            prefix = "White" if current_color==chess.WHITE else "Black"
+            self.tournamentEngineRaw.emit(f"{prefix} raw: {raw_output}")
             if not bestmove:
                 game_log += "No answer from engine.\n"
                 result = "Abort"
@@ -382,17 +362,12 @@ class TournamentThread(QThread):
             node = node.add_variation(move)
             move_count += 1
             board_state = board.unicode(borders=True)
-            side = "White" if current_color==chess.WHITE else "Black"
-            if current_color == chess.WHITE:
-                white_debug = f"White {white_config['name']}: {info_details if info_details else 'idle'}"
-                black_debug = f"Black {black_config['name']}: idle"
-            else:
-                white_debug = f"White {white_config['name']}: idle"
-                black_debug = f"Black {black_config['name']}: {info_details if info_details else 'idle'}"
+            white_debug = f"White {white_config['name']}: {info_details if info_details else 'idle'}"
+            black_debug = f"Black {black_config['name']}: {info_details if info_details else 'idle'}"
             self.tournamentEngineInfoWhite.emit(white_debug)
             self.tournamentEngineInfoBlack.emit(black_debug)
-            self.tournamentBoard.emit(f"{board_state}\nActive: {side} - {white_config['name'] if current_color==chess.WHITE else black_config['name']}")
-            game_log += f"{move_count}. { 'White' if board.turn==chess.BLACK else 'Black' } plays {move.uci()} (spent {elapsed:.2f}s, remaining {clocks[current_color]:.2f}s)\n"
+            self.tournamentBoard.emit(f"{board_state}\nActive: {'White' if board.turn==chess.WHITE else 'Black'} - {white_config['name'] if board.turn==chess.BLACK else black_config['name']}")
+            game_log += f"{move_count}. {'White' if board.turn==chess.BLACK else 'Black'} plays {move.uci()} (movetime {self.movetime}s)\n"
         result = board.result() if board.is_game_over() else "Abort"
         white_engine.quit()
         black_engine.quit()
@@ -407,55 +382,58 @@ class TournamentTab(QWidget):
         self.initUI()
         self.loadEngineList()
     def initUI(self):
-        layout = QVBoxLayout()
-        hlayout_list = QHBoxLayout()
+        main_layout = QVBoxLayout()
+        hlayout = QHBoxLayout()
         self.engineListWidget = QListWidget()
         self.engineListWidget.setSelectionMode(QAbstractItemView.MultiSelection)
-        hlayout_list.addWidget(QLabel("Available Engines:"))
-        hlayout_list.addWidget(self.engineListWidget)
-        layout.addLayout(hlayout_list)
+        hlayout.addWidget(QLabel("Available Engines:"))
+        hlayout.addWidget(self.engineListWidget)
+        main_layout.addLayout(hlayout)
+        debug_layout = QHBoxLayout()
+        self.tournamentLog = QTextEdit()
+        self.tournamentLog.setReadOnly(True)
+        self.engineRawDebug = QTextEdit()
+        self.engineRawDebug.setReadOnly(True)
+        debug_layout.addWidget(QLabel("Tournament Log:"))
+        debug_layout.addWidget(QLabel("Engine Raw Debug:"))
+        logs_layout = QHBoxLayout()
+        logs_layout.addWidget(self.tournamentLog)
+        logs_layout.addWidget(self.engineRawDebug)
+        main_layout.addLayout(logs_layout)
+        self.boardArea = QTextEdit()
+        self.boardArea.setReadOnly(True)
+        main_layout.addWidget(QLabel("Board (ASCII, Live):"))
+        main_layout.addWidget(self.boardArea)
+        hlayout_debug = QHBoxLayout()
+        self.debugWhite = QLineEdit()
+        self.debugWhite.setReadOnly(True)
+        self.debugWhite.setPlaceholderText("Summarized Debug White")
+        self.debugBlack = QLineEdit()
+        self.debugBlack.setReadOnly(True)
+        self.debugBlack.setPlaceholderText("Summarized Debug Black")
+        hlayout_debug.addWidget(self.debugWhite)
+        hlayout_debug.addWidget(self.debugBlack)
+        main_layout.addWidget(QLabel("Summarized Engine Debug:"))
+        main_layout.addLayout(hlayout_debug)
         tc_layout = QFormLayout()
-        self.startTimeEdit = QLineEdit("60")
-        self.incrementEdit = QLineEdit("1")
-        self.bonusAfterEdit = QLineEdit("40")
+        self.movetimeEdit = QLineEdit("1")
         self.roundsSpin = QSpinBox()
         self.roundsSpin.setMinimum(1)
         self.roundsSpin.setValue(1)
         self.concurrencySpin = QSpinBox()
         self.concurrencySpin.setMinimum(1)
         self.concurrencySpin.setValue(1)
-        tc_layout.addRow("Start Time (s):", self.startTimeEdit)
-        tc_layout.addRow("Increment (s):", self.incrementEdit)
-        tc_layout.addRow("Bonus after Moves:", self.bonusAfterEdit)
+        tc_layout.addRow("Time per move (s):", self.movetimeEdit)
         tc_layout.addRow("Rounds (Round Robin):", self.roundsSpin)
         tc_layout.addRow("Concurrency:", self.concurrencySpin)
-        layout.addLayout(tc_layout)
+        main_layout.addLayout(tc_layout)
         self.startTournamentButton = QPushButton("Start Tournament")
         self.startTournamentButton.clicked.connect(self.startTournament)
-        layout.addWidget(self.startTournamentButton)
-        self.tournamentLog = QTextEdit()
-        self.tournamentLog.setReadOnly(True)
-        layout.addWidget(QLabel("Tournament Log:"))
-        layout.addWidget(self.tournamentLog, stretch=1)
-        self.boardArea = QTextEdit()
-        self.boardArea.setReadOnly(True)
-        layout.addWidget(QLabel("Board (ASCII, Live):"))
-        layout.addWidget(self.boardArea, stretch=3)
-        hlayout_debug = QHBoxLayout()
-        self.debugWhite = QLineEdit()
-        self.debugWhite.setReadOnly(True)
-        self.debugWhite.setPlaceholderText("Debug White")
-        self.debugBlack = QLineEdit()
-        self.debugBlack.setReadOnly(True)
-        self.debugBlack.setPlaceholderText("Debug Black")
-        hlayout_debug.addWidget(self.debugWhite)
-        hlayout_debug.addWidget(self.debugBlack)
-        layout.addWidget(QLabel("Engine Debug Info:"))
-        layout.addLayout(hlayout_debug)
+        main_layout.addWidget(self.startTournamentButton)
         self.savePGNButton = QPushButton("Save PGN")
         self.savePGNButton.clicked.connect(self.savePGN)
-        layout.addWidget(self.savePGNButton)
-        self.setLayout(layout)
+        main_layout.addWidget(self.savePGNButton)
+        self.setLayout(main_layout)
     def loadEngineList(self):
         path = getConfigPath()
         self.engines = []
@@ -476,32 +454,36 @@ class TournamentTab(QWidget):
         if len(selected_items) < 2:
             QMessageBox.warning(self, "Error", "Please select at least two engines!")
             return
+        selected_engines = [e for e in self.engines if e.get("name") in [item.text() for item in selected_items]]
         try:
-            start_time = float(self.startTimeEdit.text().strip())
-            increment = float(self.incrementEdit.text().strip())
-            bonus_after = int(self.bonusAfterEdit.text().strip())
+            movetime = float(self.movetimeEdit.text().strip())
             rounds = self.roundsSpin.value()
             concurrency = self.concurrencySpin.value()
         except ValueError:
             QMessageBox.warning(self, "Error", "Invalid time-control values!")
             return
-        selected_engines = [e for e in self.engines if e.get("name") in [item.text() for item in selected_items]]
         self.tournamentLog.clear()
-        self.thread = TournamentThread(selected_engines, start_time, increment, bonus_after, rounds, concurrency, use_wtime=True)
-        self.thread.tournamentLog.connect(self.appendLog)
+        self.engineRawDebug.clear()
+        self.thread = TournamentThread(selected_engines, movetime, rounds, concurrency, use_movetime=True)
+        self.thread.tournamentLog.connect(self.appendTournamentLog)
         self.thread.tournamentBoard.connect(self.updateBoard)
-        self.thread.tournamentEngineInfoWhite.connect(self.updateDebugWhite)
-        self.thread.tournamentEngineInfoBlack.connect(self.updateDebugBlack)
+        self.thread.tournamentEngineInfoWhite.connect(self.updateSummarizedWhite)
+        self.thread.tournamentEngineInfoBlack.connect(self.updateSummarizedBlack)
+        self.thread.tournamentEngineRaw.connect(self.appendEngineRaw)
         self.thread.tournamentPGN.connect(self.saveTournamentPGN)
-        self.thread.tournamentFinished.connect(self.appendLog)
+        self.thread.tournamentFinished.connect(self.appendTournamentLog)
         self.thread.start()
-    def appendLog(self, text):
-        self.tournamentLog.append(text)
+    def appendTournamentLog(self, text):
+        self.tournamentLog.setPlainText(text)
+        self.tournamentLog.verticalScrollBar().setValue(self.tournamentLog.verticalScrollBar().maximum())
+    def appendEngineRaw(self, text):
+        self.engineRawDebug.append(text)
+        self.engineRawDebug.verticalScrollBar().setValue(self.engineRawDebug.verticalScrollBar().maximum())
     def updateBoard(self, board_text):
         self.boardArea.setPlainText(board_text)
-    def updateDebugWhite(self, text):
+    def updateSummarizedWhite(self, text):
         self.debugWhite.setText(text)
-    def updateDebugBlack(self, text):
+    def updateSummarizedBlack(self, text):
         self.debugBlack.setText(text)
     def saveTournamentPGN(self, pgn_text):
         self.tournamentPGN = pgn_text
@@ -561,7 +543,7 @@ class PlayGameTab(QWidget):
         if path:
             self.engineName = os.path.basename(path)
             self.engineLabel.setText(f"Engine: {self.engineName} (Black)")
-            self.engine = UCIEngine(path, os.path.dirname(path), use_wtime=True, wtime=1, inc=0)
+            self.engine = UCIEngine(path, os.path.dirname(path), False, 0, 0, color=chess.BLACK)
     def startGame(self):
         self.chooseEngine()
         if not self.engine:
@@ -598,7 +580,7 @@ class PlayGameTab(QWidget):
         self.gameLog.append(f"You: {move.uci()}")
         if self.engine:
             self.engine.sendCommand("position fen " + self.board.fen())
-            bestmove, info_details = self.engine.waitForBestmove(1000)
+            bestmove, info_details, _ = self.engine.waitForBestmove(1000)
             if bestmove:
                 try:
                     engine_move = chess.Move.from_uci(bestmove)
