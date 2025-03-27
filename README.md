@@ -12,5 +12,6 @@ Small TODO list for the v.0.2.0
 - [ ] Maybe bring back OG-TC if I have enought time (low priority
 - [ ] Add sounds
 - [ ] Watch replay from PGN
+- [ ] Make better Setup.iss
 
 
